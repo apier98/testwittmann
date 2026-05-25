@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "testwittmann"
+version = "0.1.0"
+description = "CLI live-stream testbed for MoldPilot camera and detector runtime."
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26,<3",
+    "opencv-python>=4.8,<5",
+    "onnxruntime-directml==1.20.1",
+    "typing-extensions>=4.12,<5",
+    "baumer-neoapi",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9",
+]
+
+[project.scripts]
+testwittmann = "testwittmann.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.uv.sources]
+baumer-neoapi = { path = '..\ARIA_MoldPilot\sdk\wheels\baumer_neoapi-1.5.0-cp34.cp35.cp36.cp37.cp38.cp39.cp310.cp311.cp312-none-win_amd64.whl' }
