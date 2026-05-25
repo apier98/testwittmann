@@ -1,0 +1,65 @@
+{
+  "csv_source": "defects_params_collaudo_giotto_25_05_26.csv",
+  "feature_cols": [
+    "t_melt",
+    "t_mold",
+    "inj_speed",
+    "pack_pressure"
+  ],
+  "x_min_max": {
+    "t_melt": {
+      "min": 240.0,
+      "max": 260.0
+    },
+    "t_mold": {
+      "min": 65.0,
+      "max": 85.0
+    },
+    "inj_speed": {
+      "min": 40.0,
+      "max": 85.0
+    },
+    "pack_pressure": {
+      "min": 600.0,
+      "max": 1050.0
+    }
+  },
+  "targets": {
+    "sink_mark": {
+      "trained_on_column": "Sink_Mark_detection_frame_ratio",
+      "regressor_class": "Ridge",
+      "regressor_params": {
+        "alpha": 0.1,
+        "copy_X": true,
+        "fit_intercept": true,
+        "max_iter": null,
+        "positive": false,
+        "random_state": null,
+        "solver": "auto",
+        "tol": 0.0001
+      },
+      "interaction_only": true,
+      "degree": 1,
+      "x_scaler_file": "models_giotto_25_05_26\\sink_mark\\x_scaler_sink_mark.joblib",
+      "model_file": "models_giotto_25_05_26\\sink_mark\\model_sink_mark.joblib"
+    },
+    "weld_line": {
+      "trained_on_column": "Weld_Line_detection_frame_ratio",
+      "regressor_class": "Ridge",
+      "regressor_params": {
+        "alpha": 0.1,
+        "copy_X": true,
+        "fit_intercept": true,
+        "max_iter": null,
+        "positive": false,
+        "random_state": null,
+        "solver": "auto",
+        "tol": 0.0001
+      },
+      "interaction_only": true,
+      "degree": 1,
+      "x_scaler_file": "models_giotto_25_05_26\\weld_line\\x_scaler_weld_line.joblib",
+      "model_file": "models_giotto_25_05_26\\weld_line\\model_weld_line.joblib"
+    }
+  }
+}

@@ -3,8 +3,10 @@ Name: testwittmann
 Version: 0.1.0
 Summary: CLI live-stream testbed for MoldPilot camera and detector runtime.
 Requires-Python: >=3.10
+Requires-Dist: joblib<2,>=1.4
 Requires-Dist: numpy<3,>=1.26
 Requires-Dist: opencv-python<5,>=4.8
 Requires-Dist: onnxruntime-directml==1.20.1
+Requires-Dist: scikit-learn==1.6.1
 Requires-Dist: typing-extensions<5,>=4.12
 Requires-Dist: baumer-neoapi

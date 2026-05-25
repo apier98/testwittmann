@@ -13,6 +13,9 @@ class MoldPilotImports:
     CameraProfile: Any
     BaumerCameraService: Any
     OnnxInferenceService: Any
+    ComponentTracker: Any
+    DefectTracker: Any
+    SeverityEngine: Any
     apply_machine_camera_bindings: Any
     load_machine_camera_bindings: Any
 
@@ -29,7 +32,9 @@ def load_moldpilot_imports() -> MoldPilotImports:
         apply_machine_camera_bindings,
         load_machine_camera_bindings,
     )
+    from aria_moldpilot.infrastructure.iou_tracker import ComponentTracker, DefectTracker
     from aria_moldpilot.infrastructure.onnx_inference import OnnxInferenceService
+    from aria_moldpilot.infrastructure.severity_engine import SeverityEngine
 
     return MoldPilotImports(
         BaumerCameraRuntimeConfig=BaumerCameraRuntimeConfig,
@@ -37,6 +42,9 @@ def load_moldpilot_imports() -> MoldPilotImports:
         CameraProfile=CameraProfile,
         BaumerCameraService=BaumerCameraService,
         OnnxInferenceService=OnnxInferenceService,
+        ComponentTracker=ComponentTracker,
+        DefectTracker=DefectTracker,
+        SeverityEngine=SeverityEngine,
         apply_machine_camera_bindings=apply_machine_camera_bindings,
         load_machine_camera_bindings=load_machine_camera_bindings,
     )

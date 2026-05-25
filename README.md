@@ -12,8 +12,8 @@ CLI test project for the current MoldPilot-like live monitoring flow.
 - Shows:
   - a live stream window
   - a replay window after a triggered segment has been captured and inferred
-
-Suggestion-model output is not implemented yet.
+  - per-defect frame ratios on the replay overlay (`frames_with_defect / component_span_frames`)
+  - a bundled suggestion-model step that pauses monitoring after each processed component when a supported defect is detected
 
 ## Runtime assumptions
 
@@ -30,6 +30,8 @@ It reads:
 It also imports runtime code from the sibling repository:
 
 `C:\Users\aria-\dev\ARIA_MoldPilot`
+
+The suggestion model is bundled directly in this package under `src\testwittmann\assets\suggestion_model`, so it ships with the CLI instead of depending on a separate runtime folder.
 
 ## How to run
 
@@ -55,16 +57,27 @@ Current useful flags:
 uv run testwittmann --trigger-threshold 0.05 --trigger-frames 3 --pre-roll 10 --post-roll 10 --max-segment-frames 160
 ```
 
-You can also override the detector score threshold:
+The CLI uses separate per-class score thresholds by default:
 
 ```powershell
-uv run testwittmann --score-threshold 0.4
+uv run testwittmann --component-score-threshold 0.7 --defect-score-threshold 0.45
+```
+
+For meaningful suggestions, also pass the current process setpoints:
+
+```powershell
+uv run testwittmann --t-melt 260 --t-mold 65 --inj-speed 45 --pack-pressure 750
 ```
 
 ## Controls
 
 - `q` or `Esc`: stop the app
 - `r`: restart the current replay from frame 0
+- terminal `1`, `2`, `3`, ...: choose the defect, choose parameters, then choose one of the first 3 suggestions
+- terminal multi-select like `1,3` or `all`: choose which process parameters the suggestion engine may vary
+- terminal custom numeric target: choose the defect-ratio threshold to reach for the current round
+- terminal `b`: go back to the previous decision step
+- terminal `s`: skip the current component and resume monitoring without applying a suggestion
 
 ## Current flow
 
@@ -72,4 +85,12 @@ uv run testwittmann --score-threshold 0.4
 2. Show the live stream in an OpenCV window.
 3. Buffer frames and trigger a segment when the contrast-based presence signal crosses the threshold.
 4. Run buffered ONNX inference on that captured segment.
-5. Play the inferred segment back in the replay window with detection overlays.
+5. Compute per-defect frame ratios as `frames_with_defect / component_span_frames`, without any tracking.
+6. If a supported defect is present, pause capture/inference on the current component and let the operator use the terminal shell to:
+   - pick which detected defect to adjust
+   - see the local parameter slopes at `x0`, sorted in descending order
+   - choose one or more parameters that the model is allowed to vary
+   - choose the target defect-ratio threshold for that round
+   - review the first 3 ranked process-setting suggestions from the bundled model
+   - accept one suggestion or skip the round
+7. Resume capture/inference after the operator decides; accepted suggestions become the next baseline setpoints for future rounds.
