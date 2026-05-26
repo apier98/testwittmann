@@ -142,29 +142,41 @@ class SuggestionModelBundle:
         *,
         current_parameters: dict[str, float],
         defect_label: str,
-        step_fraction: float = 0.1,
+        step_size: float = 0.1,
     ) -> tuple[ParameterSlope, ...]:
         defect_key = self.resolve_defect_key(defect_label)
         if defect_key is None:
             raise KeyError(f"Unsupported defect label for suggestion model: {defect_label}")
 
         current = self._canonicalize_parameters(current_parameters)
+        current_vector = self._feature_vector(current)
+        target = self._targets[defect_key]
+        current_scaled = target.scaler.transform(current_vector)
         slopes: list[ParameterSlope] = []
-        for feature_key in self._feature_keys:
+        normalized_half_span = max(float(step_size), 1e-6)
+        for feature_index, feature_key in enumerate(self._feature_keys):
             lower_bound, upper_bound = self._feature_bounds[feature_key]
-            center_value = float(current[feature_key])
-            half_span = max((upper_bound - lower_bound) * float(step_fraction), 1e-6)
-            probe_low = max(lower_bound, center_value - half_span)
-            probe_high = min(upper_bound, center_value + half_span)
+
+            lower_vector = current_vector.copy()
+            lower_vector[0, feature_index] = lower_bound
+            lower_scaled = float(target.scaler.transform(lower_vector)[0, feature_index])
+
+            upper_vector = current_vector.copy()
+            upper_vector[0, feature_index] = upper_bound
+            upper_scaled = float(target.scaler.transform(upper_vector)[0, feature_index])
+
+            center_scaled = float(current_scaled[0, feature_index])
+            probe_low = max(lower_scaled, center_scaled - normalized_half_span)
+            probe_high = min(upper_scaled, center_scaled + normalized_half_span)
             if probe_high <= probe_low:
                 slope = 0.0
             else:
-                low_point = dict(current)
-                high_point = dict(current)
-                low_point[feature_key] = probe_low
-                high_point[feature_key] = probe_high
-                y_low = self.predict_ratio(low_point, defect_key)
-                y_high = self.predict_ratio(high_point, defect_key)
+                low_scaled = current_scaled.copy()
+                high_scaled = current_scaled.copy()
+                low_scaled[0, feature_index] = probe_low
+                high_scaled[0, feature_index] = probe_high
+                y_low = self._predict_ratio_from_scaled(low_scaled, defect_key)
+                y_high = self._predict_ratio_from_scaled(high_scaled, defect_key)
                 slope = (y_high - y_low) / (probe_high - probe_low)
             slopes.append(ParameterSlope(feature_key=feature_key, slope=float(slope)))
 
@@ -265,6 +277,11 @@ class SuggestionModelBundle:
             [[float(canonical[feature_key]) for feature_key in self._feature_keys]],
             dtype=float,
         )
+
+    def _predict_ratio_from_scaled(self, scaled_vector: np.ndarray, defect_key: str) -> float:
+        target = self._targets[defect_key]
+        prediction = target.model.predict(scaled_vector)
+        return float(np.asarray(prediction).reshape(-1)[0])
 
     def _canonicalize_parameters(self, current_parameters: dict[str, float]) -> dict[str, float]:
         canonical = {str(key): float(value) for key, value in current_parameters.items()}

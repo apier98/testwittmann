@@ -466,7 +466,10 @@ class LiveDetectorCli:
 
             while not self._stop_event.is_set():
                 print()
-                print(f"Pendenze numeriche in x0 per {defect.defect_label} (ordine decrescente):")
+                print(
+                    f"Pendenze numeriche del modello in x0 per {defect.defect_label} "
+                    "(feature X normalizzate, ordine decrescente):"
+                )
                 _print_parameter_slopes(slopes)
                 raw_feature_choice = _read_console_choice(
                     "Seleziona uno o piu parametri [es. 1,3], 'all', 'b' indietro o 's' skip: ",
