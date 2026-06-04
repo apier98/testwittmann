@@ -859,7 +859,13 @@ def _print_suggestion_candidate(
 
 def _print_parameter_slopes(slopes: tuple[ParameterSlope, ...]) -> None:
     for index, item in enumerate(slopes, start=1):
-        print(f"  {index}. {item.feature_key}: slope={item.slope:.6f}")
+        global_suffix = ""
+        if item.global_slope is not None:
+            # Highlight if local is flat but global is significant
+            marker = " *" if abs(item.slope) < 1e-6 and abs(item.global_slope) > 0.001 else ""
+            global_suffix = f" [global={item.global_slope:+.6f}]{marker}"
+        
+        print(f"  {index}. {item.feature_key}: slope={item.slope:+.6f}{global_suffix}")
 
 
 def _format_suggestion_summary(

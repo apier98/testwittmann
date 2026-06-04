@@ -52,6 +52,7 @@ class SuggestionCandidate:
 class ParameterSlope:
     feature_key: str
     slope: float
+    global_slope: float | None = None
 
     @property
     def absolute_slope(self) -> float:
@@ -70,6 +71,11 @@ class SuggestionModelBundle:
                 trained_on_column=str(target_info["trained_on_column"]),
                 model=joblib.load(self._resolve_bundle_path(str(target_info["model_file"]))),
                 scaler=joblib.load(self._resolve_bundle_path(str(target_info["x_scaler_file"]))),
+                poly_features=(
+                    joblib.load(self._resolve_bundle_path(str(target_info["poly_features_file"])))
+                    if "poly_features_file" in target_info
+                    else None
+                ),
             )
             for defect_key, target_info in targets.items()
         }
@@ -80,6 +86,31 @@ class SuggestionModelBundle:
             )
             for name, bounds in self._model_info["x_min_max"].items()
         }
+        self._global_slope_cache: dict[str, dict[str, float]] = {}
+        self._precompute_global_slopes()
+
+    def _precompute_global_slopes(self, n_samples: int = 1000, seed: int = 123) -> None:
+        """Estimate global sensitivity by averaging slopes across the parameter space."""
+        rng = np.random.default_rng(seed)
+        for defect_key in self._targets:
+            cumulative_slopes = {feat: 0.0 for feat in self._feature_keys}
+            
+            for _ in range(n_samples):
+                x_rand = {
+                    feat: float(rng.uniform(self._feature_bounds[feat][0], self._feature_bounds[feat][1]))
+                    for feat in self._feature_keys
+                }
+                local_slopes = self.local_parameter_slopes(
+                    current_parameters=x_rand,
+                    defect_label=defect_key,
+                    step_size=0.1
+                )
+                for s in local_slopes:
+                    cumulative_slopes[s.feature_key] += s.slope
+            
+            self._global_slope_cache[defect_key] = {
+                feat: val / n_samples for feat, val in cumulative_slopes.items()
+            }
 
     @property
     def feature_keys(self) -> tuple[str, ...]:
@@ -134,6 +165,10 @@ class SuggestionModelBundle:
         vector = self._feature_vector(current_parameters)
         target = self._targets[defect_key]
         scaled = target.scaler.transform(vector)
+        
+        if target.poly_features is not None:
+            scaled = target.poly_features.transform(scaled)
+            
         prediction = target.model.predict(scaled)
         return float(np.asarray(prediction).reshape(-1)[0])
 
@@ -154,6 +189,9 @@ class SuggestionModelBundle:
         current_scaled = target.scaler.transform(current_vector)
         slopes: list[ParameterSlope] = []
         normalized_half_span = max(float(step_size), 1e-6)
+        
+        global_trends = self._global_slope_cache.get(defect_key, {})
+
         for feature_index, feature_key in enumerate(self._feature_keys):
             lower_bound, upper_bound = self._feature_bounds[feature_key]
 
@@ -178,7 +216,14 @@ class SuggestionModelBundle:
                 y_low = self._predict_ratio_from_scaled(low_scaled, defect_key)
                 y_high = self._predict_ratio_from_scaled(high_scaled, defect_key)
                 slope = (y_high - y_low) / (probe_high - probe_low)
-            slopes.append(ParameterSlope(feature_key=feature_key, slope=float(slope)))
+            
+            slopes.append(
+                ParameterSlope(
+                    feature_key=feature_key, 
+                    slope=float(slope),
+                    global_slope=global_trends.get(feature_key)
+                )
+            )
 
         slopes.sort(key=lambda item: (-item.absolute_slope, item.feature_key))
         return tuple(slopes)
@@ -280,7 +325,12 @@ class SuggestionModelBundle:
 
     def _predict_ratio_from_scaled(self, scaled_vector: np.ndarray, defect_key: str) -> float:
         target = self._targets[defect_key]
-        prediction = target.model.predict(scaled_vector)
+        
+        vector = scaled_vector
+        if target.poly_features is not None:
+            vector = target.poly_features.transform(vector)
+            
+        prediction = target.model.predict(vector)
         return float(np.asarray(prediction).reshape(-1)[0])
 
     def _canonicalize_parameters(self, current_parameters: dict[str, float]) -> dict[str, float]:
@@ -384,6 +434,7 @@ class _LoadedSuggestionTarget:
     trained_on_column: str
     model: Any
     scaler: Any
+    poly_features: Any | None = None
 
 
 def load_bundled_suggestion_model() -> SuggestionModelBundle:
