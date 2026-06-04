@@ -596,6 +596,10 @@ class LiveDetectorCli:
                     if target_ratio is None:
                         print("Soglia non valida.")
                         continue
+                    
+                    if target_ratio >= defect.measured_ratio:
+                        print(f"Il difetto '{defect.defect_label}' è già entro la soglia target (misurato: {defect.measured_ratio:.3f}, target: {target_ratio:.3f}).")
+                        continue
 
                     suggestions = self._suggestion_model.top_suggestions(
                         current_parameters=state.current_parameters,
