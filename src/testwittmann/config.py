@@ -45,77 +45,97 @@ def resolve_runtime_root() -> Path:
     return Path.home() / ".aria" / "moldpilot"
 
 
-def load_runtime_assets(runtime_root: Path | None = None) -> RuntimeAssets:
+def load_runtime_assets(
+    runtime_root: Path | None = None, 
+    *, 
+    is_simulation: bool = False
+) -> RuntimeAssets:
     root = runtime_root or resolve_runtime_root()
     configs_root = root / "configs"
     published_path = configs_root / "published_configurations.json"
     registry_path = root / "models" / "registry.json"
     bundle_path = root / "models" / DEFAULT_BUNDLE_RELATIVE_PATH
 
-    published_payload = _read_json_object(published_path)
-    items = published_payload.get("items", [])
-    if not isinstance(items, list):
-        raise RuntimeError(f"Invalid published configurations payload: {published_path}")
+    try:
+        published_payload = _read_json_object(published_path)
+        items = published_payload.get("items", [])
+        if not isinstance(items, list):
+            raise RuntimeError(f"Invalid published configurations payload: {published_path}")
 
-    config_item = next(
-        (
-            item
-            for item in items
-            if isinstance(item, dict)
-            and isinstance(item.get("reference"), dict)
-            and item["reference"].get("configuration_id") == HARDCODED_CONFIGURATION_ID
-        ),
-        None,
-    )
-    if config_item is None:
-        raise RuntimeError(
-            "Hardcoded MoldPilot camera configuration was not found: "
-            f"{HARDCODED_CONFIGURATION_ID}"
+        config_item = next(
+            (
+                item
+                for item in items
+                if isinstance(item, dict)
+                and isinstance(item.get("reference"), dict)
+                and item["reference"].get("configuration_id") == HARDCODED_CONFIGURATION_ID
+            ),
+            None,
         )
+        if config_item is None:
+            raise RuntimeError(
+                "Hardcoded MoldPilot camera configuration was not found: "
+                f"{HARDCODED_CONFIGURATION_ID}"
+            )
 
-    process_profile_payload = config_item.get("process_camera_profile")
-    if not isinstance(process_profile_payload, dict):
-        raise RuntimeError(
-            "The hardcoded MoldPilot configuration is missing process_camera_profile: "
-            f"{HARDCODED_CONFIGURATION_ID}"
+        process_profile_payload = config_item.get("process_camera_profile")
+        if not isinstance(process_profile_payload, dict):
+            raise RuntimeError(
+                "The hardcoded MoldPilot configuration is missing process_camera_profile: "
+                f"{HARDCODED_CONFIGURATION_ID}"
+            )
+
+        registry_payload = _read_json_object(registry_path)
+        bundles = registry_payload.get("bundles", [])
+        if not isinstance(bundles, list):
+            raise RuntimeError(f"Invalid model registry payload: {registry_path}")
+
+        if not any(
+            isinstance(entry, dict) and entry.get("bundle_id") == HARDCODED_MODEL_BUNDLE_ID
+            for entry in bundles
+        ):
+            raise RuntimeError(
+                "Hardcoded defect detector bundle was not found in the MoldPilot registry: "
+                f"{HARDCODED_MODEL_BUNDLE_ID}"
+            )
+
+        if not bundle_path.exists():
+            raise RuntimeError(f"Detector bundle path does not exist: {bundle_path}")
+
+        return RuntimeAssets(
+            runtime_root=root,
+            config_id=HARDCODED_CONFIGURATION_ID,
+            config_version=HARDCODED_CONFIGURATION_VERSION,
+            model_bundle_id=HARDCODED_MODEL_BUNDLE_ID,
+            process_camera_profile=CameraProfileSettings(
+                exposure_time_us=float(process_profile_payload["exposure_time_us"]),
+                gain_db=float(process_profile_payload["gain_db"]),
+                frame_rate_fps=float(process_profile_payload["frame_rate_fps"]),
+                pixel_format=str(process_profile_payload["pixel_format"]),
+                trigger_mode=str(process_profile_payload["trigger_mode"]),
+                roi_width=int(process_profile_payload["roi_width"]),
+                roi_height=int(process_profile_payload["roi_height"]),
+                offset_x=int(process_profile_payload["offset_x"]),
+                offset_y=int(process_profile_payload["offset_y"]),
+            ),
+            model_bundle_path=bundle_path,
+            configs_root=configs_root,
         )
-
-    registry_payload = _read_json_object(registry_path)
-    bundles = registry_payload.get("bundles", [])
-    if not isinstance(bundles, list):
-        raise RuntimeError(f"Invalid model registry payload: {registry_path}")
-
-    if not any(
-        isinstance(entry, dict) and entry.get("bundle_id") == HARDCODED_MODEL_BUNDLE_ID
-        for entry in bundles
-    ):
-        raise RuntimeError(
-            "Hardcoded defect detector bundle was not found in the MoldPilot registry: "
-            f"{HARDCODED_MODEL_BUNDLE_ID}"
-        )
-
-    if not bundle_path.exists():
-        raise RuntimeError(f"Detector bundle path does not exist: {bundle_path}")
-
-    return RuntimeAssets(
-        runtime_root=root,
-        config_id=HARDCODED_CONFIGURATION_ID,
-        config_version=HARDCODED_CONFIGURATION_VERSION,
-        model_bundle_id=HARDCODED_MODEL_BUNDLE_ID,
-        process_camera_profile=CameraProfileSettings(
-            exposure_time_us=float(process_profile_payload["exposure_time_us"]),
-            gain_db=float(process_profile_payload["gain_db"]),
-            frame_rate_fps=float(process_profile_payload["frame_rate_fps"]),
-            pixel_format=str(process_profile_payload["pixel_format"]),
-            trigger_mode=str(process_profile_payload["trigger_mode"]),
-            roi_width=int(process_profile_payload["roi_width"]),
-            roi_height=int(process_profile_payload["roi_height"]),
-            offset_x=int(process_profile_payload["offset_x"]),
-            offset_y=int(process_profile_payload["offset_y"]),
-        ),
-        model_bundle_path=bundle_path,
-        configs_root=configs_root,
-    )
+    except RuntimeError as exc:
+        if is_simulation:
+            # Fallback for simulation mode when hardware assets are missing
+            return RuntimeAssets(
+                runtime_root=root,
+                config_id=HARDCODED_CONFIGURATION_ID,
+                config_version=HARDCODED_CONFIGURATION_VERSION,
+                model_bundle_id=HARDCODED_MODEL_BUNDLE_ID,
+                process_camera_profile=CameraProfileSettings(
+                    0.0, 0.0, 0.0, "Mono8", "Off", 0, 0, 0, 0
+                ),
+                model_bundle_path=bundle_path,
+                configs_root=configs_root,
+            )
+        raise exc
 
 
 def _read_json_object(path: Path) -> dict[str, object]:

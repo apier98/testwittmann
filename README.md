@@ -14,6 +14,8 @@ CLI test project for the current MoldPilot-like live monitoring flow.
   - a replay window after a triggered segment has been captured and inferred
   - per-defect frame ratios on the replay overlay (`frames_with_defect / component_span_frames`)
   - a bundled suggestion-model step that pauses monitoring after each processed component when a supported defect is detected
+- **Global Sensitivity:** Displays global parameter trends alongside local slopes to prevent optimization stalls (marked with `*` when local gradients vanish).
+- **Simulation Mode:** Run the entire decision logic offline without a camera or detector.
 
 ## Runtime assumptions
 
@@ -69,6 +71,14 @@ For meaningful suggestions, also pass the current process setpoints:
 uv run testwittmann --t-melt 260 --t-mold 65 --inj-speed 45 --pack-pressure 750
 ```
 
+### Simulation Mode (Offline Testing)
+Run the entire decision logic manually without hardware:
+```bash
+uv run testwittmann --simulation
+```
+- Enter mock defect ratios when prompted (e.g. `sink_mark=0.4`).
+- Interact with the terminal to test suggestions and slopes.
+
 ## Controls
 
 - `q` or `Esc`: stop the app
@@ -88,7 +98,7 @@ uv run testwittmann --t-melt 260 --t-mold 65 --inj-speed 45 --pack-pressure 750
 5. Compute per-defect frame ratios as `frames_with_defect / component_span_frames`, without any tracking.
 6. If a supported defect is present, pause capture/inference on the current component and let the operator use the terminal shell to:
    - pick which detected defect to adjust
-   - see the local parameter slopes at `x0`, sorted in descending order
+   - see the local parameter slopes vs. **Global Trends** in `x0`
    - choose one or more parameters that the model is allowed to vary
    - choose the target defect-ratio threshold for that round
    - review the first 3 ranked process-setting suggestions from the bundled model

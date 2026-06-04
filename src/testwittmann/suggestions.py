@@ -86,6 +86,10 @@ class SuggestionModelBundle:
             )
             for name, bounds in self._model_info["x_min_max"].items()
         }
+        self._feature_deltas = {
+            str(name): float(bounds.get("delta_max", float("inf")))
+            for name, bounds in self._model_info["x_min_max"].items()
+        }
         self._global_slope_cache: dict[str, dict[str, float]] = {}
         self._precompute_global_slopes()
 
@@ -358,38 +362,55 @@ class SuggestionModelBundle:
         feature_keys_to_optimize: tuple[str, ...],
     ) -> list[dict[str, float]]:
         candidates: list[dict[str, float]] = []
+        
+        # Determine the effective bounds for each feature based on delta_max
+        effective_bounds = {}
+        for name in self._feature_keys:
+            low, high = self._feature_bounds[name]
+            delta = self._feature_deltas[name]
+            curr = current_parameters[name]
+            
+            # Clip the global bounds by the current value +/- delta_max
+            eff_low = max(low, curr - delta)
+            eff_high = min(high, curr + delta)
+            effective_bounds[name] = (eff_low, eff_high)
+
         midpoints = {
             name: (bounds[0] + bounds[1]) / 2.0
-            for name, bounds in self._feature_bounds.items()
+            for name, bounds in effective_bounds.items()
         }
 
         candidates.append(dict(current_parameters))
+        
+        # Midpoint candidate (within effective bounds)
         midpoint_candidate = dict(current_parameters)
         for feature_key in feature_keys_to_optimize:
             midpoint_candidate[feature_key] = midpoints[feature_key]
         candidates.append(midpoint_candidate)
 
+        # Boundary candidates (within effective bounds)
         for feature_key in feature_keys_to_optimize:
-            bounds = self._feature_bounds[feature_key]
-            low, high = bounds
-            for boundary_value in (low, high, midpoints[feature_key]):
+            eff_low, eff_high = effective_bounds[feature_key]
+            for boundary_value in (eff_low, eff_high, midpoints[feature_key]):
                 candidate = dict(current_parameters)
                 candidate[feature_key] = boundary_value
                 candidates.append(candidate)
 
+        # Corner candidates (within effective bounds)
         for corner_values in product((0, 1), repeat=len(feature_keys_to_optimize)):
             candidate = dict(current_parameters)
             for index, feature_key in enumerate(feature_keys_to_optimize):
-                low, high = self._feature_bounds[feature_key]
-                candidate[feature_key] = low if corner_values[index] == 0 else high
+                eff_low, eff_high = effective_bounds[feature_key]
+                candidate[feature_key] = eff_low if corner_values[index] == 0 else eff_high
             candidates.append(candidate)
 
+        # Random samples (within effective bounds)
         rng = np.random.default_rng(random_seed)
         for _ in range(max(0, sample_count)):
             candidate = dict(current_parameters)
             for feature_key in feature_keys_to_optimize:
-                low, high = self._feature_bounds[feature_key]
-                candidate[feature_key] = float(rng.uniform(low, high))
+                eff_low, eff_high = effective_bounds[feature_key]
+                candidate[feature_key] = float(rng.uniform(eff_low, eff_high))
             candidates.append(candidate)
 
         return candidates

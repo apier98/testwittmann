@@ -1,5 +1,5 @@
 {
-  "csv_source": "defects_params_collaudo_giotto_25_05_26.csv",
+  "data_source": "defects_params_collaudo_giotto_25_05_26_trasformato.xlsx",
   "feature_cols": [
     "t_melt",
     "t_mold",
@@ -9,56 +9,78 @@
   "x_min_max": {
     "t_melt": {
       "min": 240.0,
-      "max": 260.0
+      "max": 260.0,
+      "delta_max": 5.0
     },
     "t_mold": {
       "min": 65.0,
-      "max": 85.0
+      "max": 85.0,
+      "delta_max": 5.0
     },
     "inj_speed": {
       "min": 40.0,
-      "max": 85.0
+      "max": 85.0,
+      "delta_max": 10.0
     },
     "pack_pressure": {
       "min": 600.0,
-      "max": 1050.0
+      "max": 1050.0,
+      "delta_max": 100.0
+    }
+  },
+  "y_min_max": {
+    "sink_mark": {
+      "trained_on_column": "Sink_Mark_detection_frame_ratio",
+      "min": 0.049,
+      "max": 0.615
+    },
+    "weld_line": {
+      "trained_on_column": "Weld_Line_detection_frame_ratio",
+      "min": 0.007,
+      "max": 0.335
     }
   },
   "targets": {
     "sink_mark": {
       "trained_on_column": "Sink_Mark_detection_frame_ratio",
-      "regressor_class": "Ridge",
+      "regressor_class": "Lasso",
       "regressor_params": {
-        "alpha": 0.1,
+        "alpha": 0.01,
         "copy_X": true,
         "fit_intercept": true,
-        "max_iter": null,
+        "max_iter": 20000,
         "positive": false,
-        "random_state": null,
-        "solver": "auto",
-        "tol": 0.0001
+        "precompute": false,
+        "random_state": 999,
+        "selection": "cyclic",
+        "tol": 0.0001,
+        "warm_start": false
       },
       "interaction_only": true,
-      "degree": 1,
+      "degree": 2,
       "x_scaler_file": "models_giotto_25_05_26\\sink_mark\\x_scaler_sink_mark.joblib",
+      "poly_features_file": "models_giotto_25_05_26\\sink_mark\\poly_features_sink_mark.joblib",
       "model_file": "models_giotto_25_05_26\\sink_mark\\model_sink_mark.joblib"
     },
     "weld_line": {
       "trained_on_column": "Weld_Line_detection_frame_ratio",
-      "regressor_class": "Ridge",
+      "regressor_class": "Lasso",
       "regressor_params": {
-        "alpha": 0.1,
+        "alpha": 0.01,
         "copy_X": true,
         "fit_intercept": true,
-        "max_iter": null,
+        "max_iter": 20000,
         "positive": false,
-        "random_state": null,
-        "solver": "auto",
-        "tol": 0.0001
+        "precompute": false,
+        "random_state": 999,
+        "selection": "cyclic",
+        "tol": 0.0001,
+        "warm_start": false
       },
       "interaction_only": true,
-      "degree": 1,
+      "degree": 2,
       "x_scaler_file": "models_giotto_25_05_26\\weld_line\\x_scaler_weld_line.joblib",
+      "poly_features_file": "models_giotto_25_05_26\\weld_line\\poly_features_weld_line.joblib",
       "model_file": "models_giotto_25_05_26\\weld_line\\model_weld_line.joblib"
     }
   }

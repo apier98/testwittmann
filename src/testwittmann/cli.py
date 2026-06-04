@@ -76,6 +76,7 @@ class LiveDetectorCli:
         current_process_parameters: dict[str, float],
         suggestion_target_ratio: float,
         suggestion_sample_count: int,
+        is_simulation: bool = False,
     ) -> None:
         self._assets = assets
         self._imports = imports
@@ -88,6 +89,7 @@ class LiveDetectorCli:
         }
         self._suggestion_target_ratio = float(suggestion_target_ratio)
         self._suggestion_sample_count = int(suggestion_sample_count)
+        self._is_simulation = is_simulation
         self._log = logging.getLogger("testwittmann")
 
         self._stop_event = threading.Event()
@@ -101,6 +103,7 @@ class LiveDetectorCli:
         self._capture_thread: threading.Thread | None = None
         self._segment_thread: threading.Thread | None = None
         self._decision_thread: threading.Thread | None = None
+        self._simulation_thread: threading.Thread | None = None
 
         self._camera_service: Any | None = None
         self._inference_service: Any | None = None
@@ -109,41 +112,54 @@ class LiveDetectorCli:
         self._decision_round_id = 0
 
     def run(self) -> int:
-        self._setup_runtime()
+        if not self._is_simulation:
+            self._setup_runtime()
         self._start_workers()
 
+        mode_desc = "SIMULATION (offline)" if self._is_simulation else "LIVE monitoring"
         print(
-            "Starting CLI monitoring with MoldPilot assets:\n"
+            f"Starting CLI in {mode_desc} mode with MoldPilot assets:\n"
             f"- config: {self._assets.config_id} ({self._assets.config_version})\n"
             f"- detector: {self._assets.model_bundle_id}\n"
             f"- bundle path: {self._assets.model_bundle_path}\n"
-            f"- component threshold: {self._component_score_threshold:.2f}\n"
-            f"- defect threshold: {self._defect_score_threshold:.2f}\n"
             f"- suggestion model defects: {', '.join(self._suggestion_model.supported_defect_keys)}\n"
             f"- suggestion current setpoints: {_format_parameter_summary(self._current_process_parameters)}\n"
-            "Controls: press 'q' or ESC in the OpenCV window to stop, 'r' to restart replay, "
-            "and use the terminal when a suggestion round opens to choose defect, parameters, target ratio and suggestion."
         )
-
-        cv2.namedWindow(WINDOW_NAME_LIVE, cv2.WINDOW_NORMAL)
-        cv2.namedWindow(WINDOW_NAME_REPLAY, cv2.WINDOW_NORMAL)
+        
+        if not self._is_simulation:
+            print(
+                f"- component threshold: {self._component_score_threshold:.2f}\n"
+                f"- defect threshold: {self._defect_score_threshold:.2f}\n"
+                "Controls: press 'q' or ESC in the OpenCV window to stop, 'r' to restart replay, "
+                "and use the terminal when a suggestion round opens to choose defect, parameters, target ratio and suggestion."
+            )
+            cv2.namedWindow(WINDOW_NAME_LIVE, cv2.WINDOW_NORMAL)
+            cv2.namedWindow(WINDOW_NAME_REPLAY, cv2.WINDOW_NORMAL)
+        else:
+            print("Simulation mode: use the terminal to input defect ratios and interact with suggestions.")
 
         try:
             while not self._stop_event.is_set():
-                self._show_live_frame()
-                self._maybe_start_latest_replay()
+                if not self._is_simulation:
+                    self._show_live_frame()
+                    self._maybe_start_latest_replay()
+                    self._show_replay_frame()
+                    
                 self._maybe_apply_decision_result()
-                self._show_replay_frame()
 
-                key = cv2.waitKey(1) & 0xFF
-                if key in {27, ord("q"), ord("Q")}:
-                    break
-                if key in {ord("r"), ord("R")} and self._replay_state is not None:
-                    self._replay_state.frame_index = 0
-                    self._replay_state.next_frame_at = 0.0
-                    continue
-
-                time.sleep(0.005)
+                if not self._is_simulation:
+                    key = cv2.waitKey(1) & 0xFF
+                    if key in {27, ord("q"), ord("Q")}:
+                        break
+                    if key in {ord("r"), ord("R")} and self._replay_state is not None:
+                        self._replay_state.frame_index = 0
+                        self._replay_state.next_frame_at = 0.0
+                        continue
+                else:
+                    # In simulation mode, we just spin and wait for the threads
+                    time.sleep(0.1)
+        except KeyboardInterrupt:
+            self._stop_event.set()
         finally:
             self.shutdown()
         return 0
@@ -158,16 +174,20 @@ class LiveDetectorCli:
                 pass
 
         if self._capture_thread is not None:
-            self._capture_thread.join(timeout=2.0)
+            self._capture_thread.join(timeout=0.1)
             self._capture_thread = None
 
         if self._segment_thread is not None:
-            self._segment_thread.join(timeout=2.0)
+            self._segment_thread.join(timeout=0.1)
             self._segment_thread = None
 
         if self._decision_thread is not None:
             self._decision_thread.join(timeout=0.1)
             self._decision_thread = None
+            
+        if self._simulation_thread is not None:
+            self._simulation_thread.join(timeout=0.1)
+            self._simulation_thread = None
 
         if self._inference_service is not None:
             try:
@@ -183,7 +203,8 @@ class LiveDetectorCli:
                 pass
             self._camera_service = None
 
-        cv2.destroyAllWindows()
+        if not self._is_simulation:
+            cv2.destroyAllWindows()
 
     def _setup_runtime(self) -> None:
         profile = self._imports.CameraProfile(
@@ -233,19 +254,27 @@ class LiveDetectorCli:
         )
 
     def _start_workers(self) -> None:
-        self._capture_thread = threading.Thread(
-            target=self._capture_loop,
-            name="testwittmann-capture",
-            daemon=True,
-        )
-        self._capture_thread.start()
+        if self._is_simulation:
+            self._simulation_thread = threading.Thread(
+                target=self._simulation_input_loop,
+                name="testwittmann-simulation",
+                daemon=True,
+            )
+            self._simulation_thread.start()
+        else:
+            self._capture_thread = threading.Thread(
+                target=self._capture_loop,
+                name="testwittmann-capture",
+                daemon=True,
+            )
+            self._capture_thread.start()
 
-        self._segment_thread = threading.Thread(
-            target=self._segment_loop,
-            name="testwittmann-segment",
-            daemon=True,
-        )
-        self._segment_thread.start()
+            self._segment_thread = threading.Thread(
+                target=self._segment_loop,
+                name="testwittmann-segment",
+                daemon=True,
+            )
+            self._segment_thread.start()
 
         self._decision_thread = threading.Thread(
             target=self._decision_loop,
@@ -253,6 +282,53 @@ class LiveDetectorCli:
             daemon=True,
         )
         self._decision_thread.start()
+
+    def _simulation_input_loop(self) -> None:
+        print("\n--- SIMULATION INPUT LOOP STARTED ---")
+        supported_defects = self._suggestion_model.supported_defect_keys
+        print(f"Supported defects: {', '.join(supported_defects)}")
+        
+        while not self._stop_event.is_set():
+            if self._pause_processing_event.is_set():
+                time.sleep(0.5)
+                continue
+
+            print("\n--- New Simulated Measurement ---")
+            ratios = {}
+            for defect_key in supported_defects:
+                prompt = f"Enter ratio for '{defect_key}' [0.0-1.0, default 0.0, 'q' to quit]: "
+                raw_val = _read_console_choice(prompt, stop_event=self._stop_event)
+                
+                if raw_val is None or raw_val in {"q", "quit", "exit"}:
+                    self._stop_event.set()
+                    return
+
+                if raw_val == "":
+                    ratios[defect_key] = 0.0
+                    continue
+
+                try:
+                    val = float(raw_val)
+                    ratios[defect_key] = max(0.0, min(1.0, val))
+                except ValueError:
+                    print(f"Invalid numeric value for {defect_key}, defaulting to 0.0")
+                    ratios[defect_key] = 0.0
+            
+            obs = self._suggestion_model.available_defect_observations(ratios)
+            if not obs:
+                print("No active defects detected in this simulated measurement.")
+                continue
+
+            self._decision_round_id += 1
+            state = SuggestionDecisionState(
+                round_id=self._decision_round_id,
+                defects=obs,
+                current_parameters=dict(self._current_process_parameters),
+            )
+            
+            self._pause_processing_event.set()
+            self._decision_state = state
+            self._queue_decision_prompt(state)
 
     def _capture_loop(self) -> None:
         trigger = SegmentTrigger(self._trigger_config)
@@ -727,6 +803,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
         default=512,
         help="How many random candidate setpoints to explore per suggestion round. Default: 512.",
     )
+    parser.add_argument(
+        "--simulation",
+        action="store_true",
+        help="Run in offline simulation mode, where defect ratios are entered manually via the terminal.",
+    )
     return parser
 
 
@@ -740,7 +821,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_argument_parser()
     args = parser.parse_args(argv)
 
-    assets = load_runtime_assets()
+    assets = load_runtime_assets(is_simulation=args.simulation)
     imports = load_moldpilot_imports()
     suggestion_model = load_bundled_suggestion_model()
     app = LiveDetectorCli(
@@ -764,6 +845,7 @@ def main(argv: list[str] | None = None) -> int:
         },
         suggestion_target_ratio=args.suggestion_target_ratio,
         suggestion_sample_count=args.suggestion_samples,
+        is_simulation=args.simulation,
     )
     return app.run()
 
