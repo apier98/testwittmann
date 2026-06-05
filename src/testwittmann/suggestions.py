@@ -16,6 +16,12 @@ _FEATURE_ALIASES = {
     "p_pack": "pack_pressure",
     "q": "inj_speed",
 }
+_MAX_ABSOLUTE_DELTAS = {
+    "t_mold": 5.0,
+    "t_melt": 5.0,
+    "pack_pressure": 100.0,
+    "inj_speed": 10.0,
+}
 
 
 @dataclass(frozen=True)
@@ -97,6 +103,14 @@ class SuggestionModelBundle:
         return {
             key: (bounds[0] + bounds[1]) / 2.0
             for key, bounds in self._feature_bounds.items()
+        }
+
+    @property
+    def max_absolute_deltas(self) -> dict[str, float]:
+        return {
+            key: float(_MAX_ABSOLUTE_DELTAS[key])
+            for key in self._feature_keys
+            if key in _MAX_ABSOLUTE_DELTAS
         }
 
     def available_defect_observations(
@@ -308,9 +322,13 @@ class SuggestionModelBundle:
         feature_keys_to_optimize: tuple[str, ...],
     ) -> list[dict[str, float]]:
         candidates: list[dict[str, float]] = []
+        search_bounds = {
+            name: self._search_bounds_for_feature(name, current_parameters=current_parameters)
+            for name in self._feature_keys
+        }
         midpoints = {
             name: (bounds[0] + bounds[1]) / 2.0
-            for name, bounds in self._feature_bounds.items()
+            for name, bounds in search_bounds.items()
         }
 
         candidates.append(dict(current_parameters))
@@ -320,7 +338,7 @@ class SuggestionModelBundle:
         candidates.append(midpoint_candidate)
 
         for feature_key in feature_keys_to_optimize:
-            bounds = self._feature_bounds[feature_key]
+            bounds = search_bounds[feature_key]
             low, high = bounds
             for boundary_value in (low, high, midpoints[feature_key]):
                 candidate = dict(current_parameters)
@@ -330,7 +348,7 @@ class SuggestionModelBundle:
         for corner_values in product((0, 1), repeat=len(feature_keys_to_optimize)):
             candidate = dict(current_parameters)
             for index, feature_key in enumerate(feature_keys_to_optimize):
-                low, high = self._feature_bounds[feature_key]
+                low, high = search_bounds[feature_key]
                 candidate[feature_key] = low if corner_values[index] == 0 else high
             candidates.append(candidate)
 
@@ -338,7 +356,7 @@ class SuggestionModelBundle:
         for _ in range(max(0, sample_count)):
             candidate = dict(current_parameters)
             for feature_key in feature_keys_to_optimize:
-                low, high = self._feature_bounds[feature_key]
+                low, high = search_bounds[feature_key]
                 candidate[feature_key] = float(rng.uniform(low, high))
             candidates.append(candidate)
 
@@ -363,6 +381,20 @@ class SuggestionModelBundle:
         if not selected:
             raise ValueError("At least one feature must be selected for optimization.")
         return tuple(selected)
+
+    def _search_bounds_for_feature(
+        self,
+        feature_key: str,
+        *,
+        current_parameters: dict[str, float],
+    ) -> tuple[float, float]:
+        lower_bound, upper_bound = self._feature_bounds[feature_key]
+        delta_limit = float(_MAX_ABSOLUTE_DELTAS.get(feature_key, upper_bound - lower_bound))
+        current_value = float(current_parameters[feature_key])
+        return (
+            max(lower_bound, current_value - delta_limit),
+            min(upper_bound, current_value + delta_limit),
+        )
 
     def _display_label_for_key(self, defect_key: str, *, fallback_label: str) -> str:
         return fallback_label if self.resolve_defect_key(fallback_label) == defect_key else defect_key
