@@ -8,6 +8,12 @@ def test_bundled_suggestion_model_loads_expected_metadata() -> None:
 
     assert bundle.feature_keys == ("t_melt", "t_mold", "inj_speed", "pack_pressure")
     assert set(bundle.supported_defect_keys) == {"sink_mark", "weld_line"}
+    assert bundle.max_absolute_deltas == {
+        "t_melt": 5.0,
+        "t_mold": 5.0,
+        "inj_speed": 10.0,
+        "pack_pressure": 100.0,
+    }
 
 
 def test_available_defect_observations_match_supported_labels_only() -> None:
@@ -108,3 +114,30 @@ def test_top_suggestions_only_changes_selected_parameters() -> None:
     for suggestion in suggestions:
         changed = suggestion.changed_parameters(current)
         assert set(changed).issubset({"pack_pressure", "t_mold"})
+
+
+def test_top_suggestions_respect_absolute_delta_limits_and_bounds() -> None:
+    bundle = load_bundled_suggestion_model()
+    current = {
+        "t_melt": 258.0,
+        "t_mold": 66.0,
+        "inj_speed": 82.0,
+        "pack_pressure": 1000.0,
+    }
+
+    suggestions = bundle.top_suggestions(
+        current_parameters=current,
+        defect_label="Sink_Mark",
+        measured_ratio=0.20,
+        target_ratio=0.05,
+        top_k=3,
+        sample_count=64,
+        random_seed=123,
+    )
+
+    assert len(suggestions) == 3
+    for suggestion in suggestions:
+        assert 253.0 <= suggestion.parameter_values["t_melt"] <= 260.0
+        assert 65.0 <= suggestion.parameter_values["t_mold"] <= 71.0
+        assert 72.0 <= suggestion.parameter_values["inj_speed"] <= 85.0
+        assert 900.0 <= suggestion.parameter_values["pack_pressure"] <= 1050.0

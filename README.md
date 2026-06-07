@@ -101,6 +101,8 @@ uv run testwittmann --simulation
    - see the local parameter slopes vs. **Global Trends** in `x0`
    - choose one or more parameters that the model is allowed to vary
    - choose the target defect-ratio threshold for that round
+   - search only inside the notebook-style local delta window, clipped to model bounds:
+     `t_mold ±5`, `t_melt ±5`, `pack_pressure ±100`, `inj_speed ±10`
    - review the first 3 ranked process-setting suggestions from the bundled model
    - accept one suggestion or skip the round
 7. Resume capture/inference after the operator decides; accepted suggestions become the next baseline setpoints for future rounds.
